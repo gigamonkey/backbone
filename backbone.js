@@ -231,12 +231,110 @@
 
   });
 
+  var NestedAttributes = Backbone.NestedAttributes = function (data) {
+    this.data = data;
+  };
+
+  var intStep = /^[0-9]+$/;
+
+  _.extend(NestedAttributes.prototype, {
+
+    // Keys are dot-delimited strings.
+
+    get: function (key) {
+      return this._navigate(key.split('.'));
+    },
+
+    set: function (key, value) {
+      return this._navigate(key.split('.'), value);
+    },
+
+    unset: function (key) {
+      var path = key.split('.');
+      var last = path.pop();
+      var node = this._navigate(path);
+      if (node) delete node[last];
+    },
+
+    has: function (key) {
+      var path = key.split('.');
+      var last = path.pop();
+      var node = this._navigate(path);
+      return node && _.has(node, last);
+    },
+
+    each: function (fn) {
+
+      function walk(node, prefix) {
+        var key, value, newpath;
+        for (key in node) {
+          value = node[key];
+          if (_.isObject(value) || _.isArray(value)) {
+            walk(value, prefix + key + '.');
+          } else {
+            fn(value, prefix + key);
+          }
+        }
+      }
+
+      walk(this.data, '');
+    },
+
+    merge: function (newData) {
+      if (newData) {
+        $.extend(true, this.data, newData);
+      }
+      return this;
+    },
+
+    toJSON: function () {
+      return $.extend(true, {}, this.data);
+    },
+
+    clone: function () {
+      return new this.constructor(this.toJSON());
+    },
+
+    _navigate: function (path, value) {
+      var step, node = this.data;
+
+      while (path.length > 0) {
+        step = path.shift();
+
+        if (step in node) {
+          node = node[step]
+
+        } else if (!_.isUndefined(value)) {
+          if (path.length > 0) {
+            // If we're not yet at the end of the line we can create
+            // the next node in the tree but we have to look at the
+            // next step in the path to know whether to create an
+            // array or an object.
+            node[step] = intStep.test(path[0]) ? [] : {};
+            node = node[step];
+
+          } else {
+            return node[step] = value;
+          }
+        } else {
+          // If we run out of nodes before we run out of path and
+          // we're not creating on the way down, then bail.
+          return null;
+        }
+      }
+      return node;
+    }
+
+  });
+
   // Backbone.Model
   // --------------
 
   // Create a new model, with defined attributes. A client id (`cid`)
   // is automatically generated and assigned for you.
   var Model = Backbone.Model = function(attributes, options) {
+
+    this.nested = options && options.nested;
 
     this.cid                = _.uniqueId('c');
     this.changed            = {};
@@ -600,7 +698,11 @@
 
     // Wrap data in the Attributes object that will manage access to it.
     wrap: function (data) {
-      return new Attributes(data);
+      if (this.nested) {
+        return new NestedAttributes(data);
+      } else {
+        return new Attributes(data);
+      }
     },
 
     // Calculates and handles any changes in `this._modelState`,
