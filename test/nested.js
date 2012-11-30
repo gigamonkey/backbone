@@ -6,7 +6,7 @@ $(document).ready(function() {
         }
     }));
 
-    test("nested data", 6, function() {
+    test("nested data 1", 6, function() {
         var Model = Backbone.Model;
         var model = new Model({
             foo: 'foo',
@@ -18,6 +18,18 @@ $(document).ready(function() {
         equal(model.get('bar.c.0'), 'one');
         equal(model.get('bar.c.1'), 'two');
         equal(model.get('bar.c.2.three'), 'iii');
+    });
+
+    test("nested data from docs", 4, function() {
+        var Model = Backbone.Model;
+        var model = new Model({
+            foo: 1,
+            bar: { baz: 2, quux: [ 3, { biff: 4 } ] }
+        }, { nested: true });
+        equal(model.get('foo'), 1);
+        equal(model.get('bar.baz'), 2);
+        equal(model.get('bar.quux.0'), 3);
+        equal(model.get('bar.quux.1.biff'), 4);
     });
 
     test("nested data", 1, function() {

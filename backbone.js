@@ -181,6 +181,12 @@
   // Backbone.Attributes
   // -------------------
 
+  // Attributes are thin wrappers around the data managed by a model.
+  // They are not exposed through the API but are used internally to
+  // provide a layer of abstraction that allows customizing the
+  // relation between the Model and the underlying data. The basic
+  // Attributes class provides a wrapper around a simple non-nested
+  // dictionary of key/value pairs.
   var Attributes = Backbone.Attibutes = function (data) {
     this.data = data;
   };
@@ -231,6 +237,27 @@
 
   });
 
+  // Backbone.NestedAttributes
+  // -------------------
+
+  // The NestedAttributes class provides a wrapper around nested
+  // javascript objects and arrays with the keys being dot-delimeted
+  // strings. Thus given the object:
+  //
+  //     {
+  //       foo: 1,
+  //       bar: { baz: 2, quux: [ 3, { biff: 4 } ] }
+  //     }
+  //
+  // The various values could be accessed as:
+  //
+  //    model.get('foo') => 1
+  //    model.get('bar.baz') => 2
+  //    model.get('bar.quux.0') => 3
+  //    model.get('bar.quux.1.biff') => 4
+  //
+  // Nested values set via `set` will cause the necessary intermediary
+  // nodes to be created.
   var NestedAttributes = Backbone.NestedAttributes = function (data) {
     this.data = data;
   };
@@ -334,26 +361,27 @@
   // is automatically generated and assigned for you.
   var Model = Backbone.Model = function(attributes, options) {
 
+    // Need to get this set up before we call wrap.
     this.nested = options && options.nested;
+    this.collection = options && options.collection;
 
-    this.cid                = _.uniqueId('c');
-    this.changed            = {};
-    this.attributes         = this.wrap({});
-    this._escapedAttributes = this.wrap({});
-    this._modelState        = [];
+    this.cid                 = _.uniqueId('c');
+    this.changed             = {};
+    this._modelState         = [];
+    this.attributes          = this.wrap({});
+    this._escapedAttributes  = this.wrap({});
 
-    if (options) {
-      if (options.collection) this.collection = options.collection;
-      if (options.parse) attributes = this.parse(attributes) || {};
-    }
+    if (options && options.parse) attributes = this.parse(attributes) || {};
 
-    var attrs = this.wrap(_.result(this, 'defaults') || {}).merge(attributes).data
+    var defaults = _.result(this, 'defaults') || {}
+    this.set(this.wrap(defaults).merge(attributes).data, { silent: true });
 
-    this.set(attrs, {silent: true});
-    this._cleanChange = true;
-    this._modelState = [];
-    this._currentState = this.attributes.clone();
+    // Reset things that would normally be set due to the change events.
+    this._modelState         = [];
+    this._cleanChange        = true;
+    this._currentState       = this.attributes.clone();
     this._previousAttributes = this.attributes.clone();
+
     this.initialize.apply(this, arguments);
   };
 
