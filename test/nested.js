@@ -6,7 +6,7 @@ $(document).ready(function() {
         }
     }));
 
-    test("nested data 1", 15, function() {
+    test("nested data 1", 22, function() {
         var Model = Backbone.Model.extend({ nested: true });
         var model = new Model({
             foo: 'foo',
@@ -27,6 +27,19 @@ $(document).ready(function() {
         strictEqual(model.has('baz'), false);
         strictEqual(model.has('baz.a'), false);
         strictEqual(model.has('foo.a'), false);
+        strictEqual(model.has('bar.c.x'), false);
+        strictEqual(model.has('bar.c.3'), false);
+        strictEqual(model.has('bar.c.2.10'), false);
+        strictEqual(model.has('bar.c.2.x'), false);
+        strictEqual(model.has('bar.c.2.three.0'), false);
+
+        // Not sure what should happen if we try to set a path that is
+        //obstructed. e.g. model.set('foo.a', 10);
+
+        model.unset('foo');
+        strictEqual(model.has('foo'), false);
+        model.set('foo.a', 10);
+        equal(model.get('foo.a'), 10);
     });
 
     test("nested data from docs", 4, function() {

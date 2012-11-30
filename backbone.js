@@ -323,37 +323,27 @@
     },
 
     _navigate: function (path, value) {
-      var step, node = this.data;
-
-      if (path.length == 0) return this.data;
+      var step, node = this.data, setting = !_.isUndefined(value);
 
       while (path.length > 0) {
         step = path.shift();
 
-        // If path is now empty this is the last step so we either
-        // return the value found there or set it.
-        if (path.length == 0) {
-          if (!_.isUndefined(value)) {
+        if (setting) {
+          if (path.length == 0) {
             node[step] = value;
-          }
-          return node[step];
-
-        } else {
-
-          if (step in node) {
-            node = node[step]
-
-          } else if (!_.isUndefined(value)) {
+          } else if (!(step in node)) {
             node[step] = intStep.test(path[0]) ? [] : {};
-            node = node[step];
-
-          } else {
-            // If we run out of nodes before we run out of path and
-            // we're not creating on the way down, then bail.
-            return null;
           }
         }
+
+        if ((_.isObject(node) || _.isArray(node)) && (step in node)) {
+          node = node[step]
+        } else {
+          return null;
+        }
       }
+
+      return node;
     }
   });
 
