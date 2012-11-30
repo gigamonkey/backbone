@@ -201,13 +201,16 @@ $(document).ready(function() {
     equal(a.id, undefined, "Unsetting the id should remove the id property.");
   });
 
-  test("multiple unsets", 1, function() {
+  test("multiple unsets", 4, function() {
     var i = 0;
     var counter = function(){ i++; };
     var model = new Backbone.Model({a: 1});
     model.on("change:a", counter);
+    equal(i, 0, 'No changes yet');
     model.set({a: 2});
+    equal(i, 1, 'Change event fired on setting attribute.');
     model.unset('a');
+    equal(i, 2, 'Change event fired on unsetting attribute.');
     model.unset('a');
     equal(i, 2, 'Unset does not fire an event for missing attributes.');
   });
@@ -473,7 +476,7 @@ $(document).ready(function() {
     var Defaulted = Backbone.Model.extend({
       defaults: {one: 1},
       initialize : function(attrs, opts) {
-        equal(this.attributes.one, 1);
+        equal(this.attributes.data.one, 1);
       }
     });
     var providedattrs = new Defaulted({});
@@ -568,7 +571,7 @@ $(document).ready(function() {
 
   test("set: undefined values", 1, function() {
     var model = new Backbone.Model({x: undefined});
-    ok('x' in model.attributes);
+    ok('x' in model.attributes.data);
   });
 
   test("change fires change:attr", 1, function() {

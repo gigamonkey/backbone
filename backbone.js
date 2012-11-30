@@ -1,3 +1,5 @@
+// -*- js-indent-level: 2 -*-
+
 //     Backbone.js 0.9.2
 
 //     (c) 2010-2012 Jeremy Ashkenas, DocumentCloud Inc.
@@ -176,29 +178,84 @@
   Events.bind   = Events.on;
   Events.unbind = Events.off;
 
+  // Backbone.Attributes
+  // -------------------
+
+  var Attributes = Backbone.Attibutes = function (data) {
+    this.data = data;
+  };
+
+  _.extend(Attributes.prototype, {
+
+    // Get the value for a key. What exactly a key is, is determined
+    // by the Attributes implementation.
+    get: function (key) {
+      return this.data[key];
+    },
+
+    set: function (key, value) {
+      return this.data[key] = value;
+    },
+
+    unset: function (key) {
+      delete this.data[key];
+    },
+
+    has: function (key) {
+      return _.has(this.data, key);
+    },
+
+    clone: function () {
+      return new this.constructor(_.clone(this.data));
+    },
+
+    each: function (fn) {
+      // You might think this could be implemented in terms of _.each
+      // but you'd be wrong because if this.data has a 'length'
+      // property everything goes pear shaped.
+      for (var key in this.data) {
+        fn(this.get(key), key);
+      }
+    },
+
+    toJSON: function () {
+      return _.clone(this.data);
+    },
+
+    merge: function (newData) {
+      if (newData) {
+        this.data = _.extend(this.data, newData);
+      }
+      return this;
+    }
+
+  });
+
   // Backbone.Model
   // --------------
 
   // Create a new model, with defined attributes. A client id (`cid`)
   // is automatically generated and assigned for you.
   var Model = Backbone.Model = function(attributes, options) {
-    var defaults;
-    var attrs = attributes || {};
-    this.cid = _.uniqueId('c');
-    this.changed = {};
-    this.attributes = {};
-    this._escapedAttributes = {};
-    this._modelState = [];
-    if (options && options.collection) this.collection = options.collection;
-    if (options && options.parse) attrs = this.parse(attrs);
-    if (defaults = _.result(this, 'defaults')) {
-      attrs = _.extend({}, defaults, attrs);
+
+    this.cid                = _.uniqueId('c');
+    this.changed            = {};
+    this.attributes         = this.wrap({});
+    this._escapedAttributes = this.wrap({});
+    this._modelState        = [];
+
+    if (options) {
+      if (options.collection) this.collection = options.collection;
+      if (options.parse) attributes = this.parse(attributes) || {};
     }
+
+    var attrs = this.wrap(_.result(this, 'defaults') || {}).merge(attributes).data
+
     this.set(attrs, {silent: true});
     this._cleanChange = true;
     this._modelState = [];
-    this._currentState = _.clone(this.attributes);
-    this._previousAttributes = _.clone(this.attributes);
+    this._currentState = this.attributes.clone();
+    this._previousAttributes = this.attributes.clone();
     this.initialize.apply(this, arguments);
   };
 
@@ -226,7 +283,7 @@
     // on the next non-silent change event.
     _modelState: null,
 
-    // A hash of the model's attributes when the last `change` occured.
+    // A copy of the model's attributes when the last `change` occured.
     _previousAttributes: null,
 
     // The default name for the JSON `id` attribute is `"id"`. MongoDB and
@@ -239,7 +296,7 @@
 
     // Return a copy of the model's `attributes` object.
     toJSON: function(options) {
-      return _.clone(this.attributes);
+      return this.attributes.toJSON();
     },
 
     // Proxy `Backbone.sync` by default.
@@ -249,66 +306,85 @@
 
     // Get the value of an attribute.
     get: function(attr) {
-      return this.attributes[attr];
+      return this.attributes.get(attr);
     },
 
     // Get the HTML-escaped value of an attribute.
     escape: function(attr) {
       var html;
-      if (html = this._escapedAttributes[attr]) return html;
+      if (html = this._escapedAttributes.get(attr)) return html;
       var val = this.get(attr);
-      return this._escapedAttributes[attr] = _.escape(val == null ? '' : '' + val);
+      return this._escapedAttributes.set(attr, _.escape(val == null ? '' : '' + val));
     },
 
     // Returns `true` if the attribute contains a value that is not null
     // or undefined.
     has: function(attr) {
-      return this.get(attr) != null;
+      // As it stands we can't just implement this as
+
+      //return this.attributes.has(attr)
+
+      // because there are test cases that test that a model set with
+      // values of null and undefined is considered to not to 'has'
+      // them. No other tests break however so it seems that it might
+      // be better to define the semantic of has to delegate to
+      // Attributes.has (which we need because it is used elsewhere
+      // internally.)
+
+      return this.attributes.get(attr) != null;
     },
 
     // Set a hash of model attributes on the object, firing `"change"` unless
     // you choose to silence it.
-    set: function(key, val, options) {
-      var attr, attrs;
-      if (key == null) return this;
+    set: function(first, second, third) {
+      var attr, attrs, options;
+      var model = this;
+      if (first == null) return this;
 
       // Handle both `"key", value` and `{key: value}` -style arguments.
-      if (_.isObject(key)) {
-        attrs = key;
-        options = val;
+      if (_.isObject(first)) {
+        attrs = this.wrap(first instanceof Model ? first.attributes.data : first)
+        options = second;
       } else {
-        (attrs = {})[key] = val;
+        attrs = this.wrap({});
+        attrs.set(first, second);
+        options = third;
       }
 
       // Extract attributes and options.
       var silent = options && options.silent;
       var unset = options && options.unset;
 
-      if (attrs instanceof Model) attrs = attrs.attributes;
-      if (unset) for (attr in attrs) attrs[attr] = void 0;
+      if (unset) {
+        attrs.each(function (val, key) { attrs.set(key, void 0); });
+      }
 
       // Run validation.
-      if (!this._validate(attrs, options)) return false;
+      if (!this._validate(attrs.data, options)) return false;
 
       // Check for changes of `id`.
-      if (this.idAttribute in attrs) this.id = attrs[this.idAttribute];
+      if (attrs.has(this.idAttribute)) this.id = attrs.get(this.idAttribute);
 
       var now = this.attributes;
       var esc = this._escapedAttributes;
 
       // For each `set` attribute...
-      for (attr in attrs) {
-        val = attrs[attr];
+      attrs.each(function (val, attr) {
 
-        // If an escaped attr exists, and the new and current value differ, remove the escaped attr.
-        if (esc[attr] && !_.isEqual(now[attr], val) || (unset && _.has(now, attr))) delete esc[attr];
+        // If an escaped attr exists, and the new and current value
+        // differ, remove the escaped attr.
+        if (esc.get(attr) && !_.isEqual(now.get(attr), val) ||
+            (unset && now.has(attr)))
+        {
+          esc.unset(attr);
+        }
 
         // Update or delete the current value.
-        unset ? delete now[attr] : now[attr] = val;
+        unset ? now.unset(attr) : now.set(attr, val);
 
         // Track any action on the attribute.
-        this._modelState.push(attr, val, unset);
-      }
+        model._modelState.push(attr, val, unset);
+      });
 
       // Signal that the model's state has potentially changed.
       this._cleanChange = false;
@@ -329,7 +405,7 @@
     // to silence it.
     clear: function(options) {
       options = _.extend({}, options, {unset: true});
-      return this.set(_.clone(this.attributes), options);
+      return this.set(_.clone(this.attributes.data), options);
     },
 
     // Fetch the model from the server. If the server's representation of the
@@ -350,42 +426,56 @@
     // Set a hash of model attributes, and sync the model to the server.
     // If the server returns an attributes hash that differs, the model's
     // state will be `set` again.
-    save: function(key, val, options) {
-      var attrs, current, done;
+    save: function(first, second, third) {
+      var attrs, current, done, options;
 
       // Handle both `"key", value` and `{key: value}` -style arguments.
-      if (key == null || _.isObject(key)) {
-        attrs = key;
-        options = val;
-      } else if (key != null) {
-        (attrs = {})[key] = val;
+      if (first == null || _.isObject(first)) {
+        attrs = first ? this.wrap(first) : null;
+        options = second;
+      } else if (first != null) {
+        attrs = this.wrap({});
+        attrs.set(first, second);
+        options = third;
       }
       options = options ? _.clone(options) : {};
 
       // If we're "wait"-ing to set changed attributes, validate early.
       if (options.wait) {
-        if (attrs && !this._validate(attrs, options)) return false;
-        current = _.clone(this.attributes);
+        if (attrs && !this._validate(attrs.data, options)) return false;
+        current = this.attributes.clone();
       }
 
-      // Regular saves `set` attributes before persisting to the server.
+      // Regular saves `set` attributes before persisting to the
+      // server. If we're waiting, we actually set them but do it
+      // silently and then will set them back to their pre-call values
+      // after we've made the xhr request via `sync`.
       var silentOptions = _.extend({}, options, {silent: true});
-      if (attrs && !this.set(attrs, options.wait ? silentOptions : options)) {
+      if (attrs && !this.set(attrs.data, options.wait ? silentOptions : options)) {
         return false;
       }
 
       // Do not persist invalid models.
       if (!attrs && !this._validate(null, options)) return false;
 
-      // After a successful server-side save, the client is (optionally)
-      // updated with the server-side state.
+      // After a successful server-side save, the client is
+      // (optionally) updated with the server-side state.
       var model = this;
       var success = options.success;
       options.success = function(resp, status, xhr) {
         done = true;
-        var serverAttrs = model.parse(resp, xhr);
-        if (options.wait) serverAttrs = _.extend(attrs || {}, serverAttrs);
-        if (!model.set(serverAttrs, options)) return false;
+        var serverAttrs = model.wrap({});
+
+        if (options.wait && attrs) {
+          // If we've waited, first merge in the data we were
+          // originally given and have waited to set ...
+          serverAttrs.merge(attrs.data);
+        }
+
+        // In either case, override with the data from the server
+        serverAttrs.merge(model.parse(resp, xhr));
+
+        if (!model.set(serverAttrs.data, options)) return false;
         if (success) success(model, resp, options);
       };
 
@@ -396,7 +486,7 @@
       // `success` has been called already.
       if (!done && options.wait) {
         this.clear(silentOptions);
-        this.set(current, silentOptions);
+        this.set(current.data, silentOptions);
       }
 
       return xhr;
@@ -446,7 +536,7 @@
 
     // Create a new model with identical attributes to this one.
     clone: function() {
-      return new this.constructor(this.attributes);
+      return new this.constructor(this.attributes.data);
     },
 
     // A model is new if it has never been saved to the server, and lacks an id.
@@ -475,7 +565,7 @@
       while (this._pending) {
         this._pending = false;
         this.trigger('change', this, options);
-        this._previousAttributes = _.clone(this.attributes);
+        this._previousAttributes = this.attributes.clone();
       }
 
       this._changing = null;
@@ -499,11 +589,18 @@
     changedAttributes: function(diff) {
       if (!diff) return this.hasChanged() ? _.clone(this.changed) : false;
       var val, changed = false, old = this._previousAttributes;
-      for (var attr in diff) {
-        if (_.isEqual(old[attr], (val = diff[attr]))) continue;
-        (changed || (changed = {}))[attr] = val;
-      }
+      var now = this.wrap(diff);
+      now.each(function (val, attr) {
+        if (!_.isEqual(old.get(attr), val)) {
+          (changed || (changed = {}))[attr] = val;
+        }
+      });
       return changed;
+    },
+
+    // Wrap data in the Attributes object that will manage access to it.
+    wrap: function (data) {
+      return new Attributes(data);
     },
 
     // Calculates and handles any changes in `this._modelState`,
@@ -525,13 +622,14 @@
 
           // Check if the attribute has been modified since the last change,
           // and update `this.changed` accordingly.
-          if (currentState[key] !== val || (_.has(currentState, key) && unset)) {
+          if (currentState.get(key) !== val || (currentState.has(key) && unset)) {
             this.changed[key] = val;
 
             // Triggers & modifications are only created inside a `change` call.
             if (!change) continue;
+
             triggers.push(key, val);
-            (!unset) ? currentState[key] = val : delete currentState[key];
+            (!unset) ? currentState.set(key, val) : currentState.unset(key);
           }
         }
         modelState.splice(i,3);
@@ -546,28 +644,28 @@
     // `"change"` event was fired.
     previous: function(attr) {
       if (attr == null || !this._previousAttributes) return null;
-      return this._previousAttributes[attr];
+      return this._previousAttributes.get(attr);
     },
 
     // Get all of the attributes of the model at the time of the previous
     // `"change"` event.
     previousAttributes: function() {
-      return _.clone(this._previousAttributes);
+      return this._previousAttributes.clone().data;
     },
 
     // Check if the model is currently in a valid state. It's only possible to
     // get into an *invalid* state if you're using silent changes.
     isValid: function(options) {
-      return !this.validate || !this.validate(this.attributes, options);
+      return !this.validate || !this.validate(this.attributes.data, options);
     },
 
     // Run validation against the next complete set of model attributes,
     // returning `true` if all is well. If a specific `error` callback has
     // been passed, call that instead of firing the general `"error"` event.
-    _validate: function(attrs, options) {
+    _validate: function(data, options) {
       if (options && options.silent || !this.validate) return true;
-      attrs = _.extend({}, this.attributes, attrs);
-      var error = this.validate(attrs, options);
+      var extended = this.attributes.clone().merge(data);
+      var error    = this.validate(extended.data, options);
       if (!error) return true;
       if (options && options.error) options.error(this, error, options);
       this.trigger('error', this, error, options);

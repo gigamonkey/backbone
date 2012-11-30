@@ -483,7 +483,7 @@ $(document).ready(function() {
     equal(resetCount, 2);
     equal(col.length, 4);
     equal(col.last(), d);
-    col.reset(_.map(models, function(m){ return m.attributes; }));
+    col.reset(_.map(models, function(m){ return m.attributes.data; }));
     equal(resetCount, 3);
     equal(col.length, 4);
     ok(col.last() !== d);
