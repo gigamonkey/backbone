@@ -325,33 +325,36 @@
     _navigate: function (path, value) {
       var step, node = this.data;
 
+      if (path.length == 0) return this.data;
+
       while (path.length > 0) {
         step = path.shift();
 
-        if (step in node) {
-          node = node[step]
+        // If path is now empty this is the last step so we either
+        // return the value found there or set it.
+        if (path.length == 0) {
+          if (!_.isUndefined(value)) {
+            node[step] = value;
+          }
+          return node[step];
 
-        } else if (!_.isUndefined(value)) {
-          if (path.length > 0) {
-            // If we're not yet at the end of the line we can create
-            // the next node in the tree but we have to look at the
-            // next step in the path to know whether to create an
-            // array or an object.
+        } else {
+
+          if (step in node) {
+            node = node[step]
+
+          } else if (!_.isUndefined(value)) {
             node[step] = intStep.test(path[0]) ? [] : {};
             node = node[step];
 
           } else {
-            return node[step] = value;
+            // If we run out of nodes before we run out of path and
+            // we're not creating on the way down, then bail.
+            return null;
           }
-        } else {
-          // If we run out of nodes before we run out of path and
-          // we're not creating on the way down, then bail.
-          return null;
         }
       }
-      return node;
     }
-
   });
 
   // Backbone.Model
@@ -361,9 +364,6 @@
   // is automatically generated and assigned for you.
   var Model = Backbone.Model = function(attributes, options) {
 
-    // Need to get this set up before we call wrap.
-    this.nested = options && options.nested;
-    this.collection = options && options.collection;
 
     this.cid                 = _.uniqueId('c');
     this.changed             = {};
@@ -372,6 +372,7 @@
     this._escapedAttributes  = this.wrap({});
 
     if (options && options.parse) attributes = this.parse(attributes) || {};
+    this.collection = options && options.collection;
 
     var defaults = _.result(this, 'defaults') || {}
     this.set(this.wrap(defaults).merge(attributes).data, { silent: true });
